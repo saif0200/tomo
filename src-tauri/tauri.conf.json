@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tomo-app",
+  "productName": "Tomo",
   "version": "0.1.0",
-  "identifier": "com.tomo-app.app",
+  "identifier": "com.tomo.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -10,11 +10,22 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "tomo-app",
-        "width": 800,
-        "height": 600
+        "title": "Tomo",
+        "width": 620,
+        "height": 118,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "center": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": false,
+        "contentProtected": false,
+        "acceptFirstMouse": true
       }
     ],
     "security": {
