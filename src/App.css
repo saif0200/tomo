@@ -15,6 +15,7 @@ body,
   height: 100%;
   margin: 0;
   background: transparent;
+  overflow: hidden;
 }
 
 .app-shell {
@@ -24,6 +25,26 @@ body,
   box-sizing: border-box;
   overflow: hidden;
   border-radius: 30px;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition:
+    opacity 186ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 186ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+  transform-origin: center top;
+  backface-visibility: hidden;
+  contain: layout paint style;
+}
+
+.app-shell--entering {
+  opacity: 0;
+  transform: translate3d(0, 2px, 0);
+}
+
+.app-shell--exiting {
+  opacity: 0;
+  transform: translate3d(0, 2px, 0);
+  pointer-events: none;
 }
 
 .chat-bar {
@@ -42,6 +63,23 @@ body,
   box-sizing: border-box;
   color: rgba(245, 246, 248, 0.92);
   overflow: hidden;
+  transition: background 186ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .chat-bar,
+  .label-btn,
+  .control-btn,
+  .send-btn {
+    transition-duration: 1ms;
+  }
+
+  .app-shell--entering,
+  .app-shell--exiting {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .drag-strip {

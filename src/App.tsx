@@ -1,7 +1,13 @@
 import "./App.css";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PointerEvent } from "react";
+
+const WINDOW_TRANSITION_MS = 186;
+const SHOW_WINDOW_EVENT = "window-show-requested";
+const HIDE_WINDOW_EVENT = "window-hide-requested";
 
 const BASE_PLACEHOLDER_LINES = [
   "Ask anything.",
@@ -42,6 +48,7 @@ const TIME_PLACEHOLDER_LINES = {
 const PLACEHOLDER_STORAGE_PREFIX = "tomo.placeholder.sequence";
 
 type TimeBucket = keyof typeof TIME_PLACEHOLDER_LINES;
+type WindowState = "entering" | "idle" | "exiting";
 
 function shuffleLines(lines: string[]) {
   const next = [...lines];
@@ -132,13 +139,137 @@ function ArrowUpIcon() {
 }
 
 function App() {
+  const [placeholder] = useState(getNextPlaceholder);
+  const [windowState, setWindowState] = useState<WindowState>("entering");
+  const isTransitioningRef = useRef(false);
+  const enterTimerRef = useRef<number | null>(null);
+  const exitTimerRef = useRef<number | null>(null);
+  const enterAnimationFrameRef = useRef<number | null>(null);
+
   const handleDragStripPointerDown = async (_event: PointerEvent<HTMLDivElement>) => {
     await getCurrentWindow().startDragging();
   };
-  const [placeholder] = useState(getNextPlaceholder);
+
+  useEffect(() => {
+    const clearTransitionTimers = () => {
+      if (enterTimerRef.current !== null) {
+        window.clearTimeout(enterTimerRef.current);
+        enterTimerRef.current = null;
+      }
+
+      if (exitTimerRef.current !== null) {
+        window.clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+
+      if (enterAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(enterAnimationFrameRef.current);
+        enterAnimationFrameRef.current = null;
+      }
+    };
+
+    const startEnter = (notifyBackend: boolean) => {
+      clearTransitionTimers();
+      isTransitioningRef.current = true;
+      setWindowState("entering");
+
+      enterAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        enterAnimationFrameRef.current = window.requestAnimationFrame(() => {
+          setWindowState("idle");
+
+          enterTimerRef.current = window.setTimeout(() => {
+            isTransitioningRef.current = false;
+            enterTimerRef.current = null;
+
+            if (notifyBackend) {
+              void invoke("finish_window_transition");
+            }
+          }, WINDOW_TRANSITION_MS);
+        });
+      });
+    };
+
+    const startExit = async (skipBegin: boolean) => {
+      if (isTransitioningRef.current) {
+        return;
+      }
+
+      if (!skipBegin) {
+        const didBegin = await invoke<boolean>("begin_hide_main_window");
+
+        if (!didBegin) {
+          return;
+        }
+      }
+
+      clearTransitionTimers();
+      isTransitioningRef.current = true;
+      setWindowState("exiting");
+
+      exitTimerRef.current = window.setTimeout(() => {
+        exitTimerRef.current = null;
+        void invoke("complete_hide_main_window");
+      }, WINDOW_TRANSITION_MS);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      const activeElement = document.activeElement as HTMLElement | null;
+      const isTyping =
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.isContentEditable;
+
+      if (isTyping) {
+        activeElement?.blur();
+      }
+
+      event.preventDefault();
+      void startExit(false);
+    };
+
+    let isMounted = true;
+    let unlistenShow: (() => void) | null = null;
+    let unlistenHide: (() => void) | null = null;
+
+    const registerListeners = async () => {
+      const [showUnlisten, hideUnlisten] = await Promise.all([
+        listen(SHOW_WINDOW_EVENT, () => {
+          startEnter(true);
+        }),
+        listen(HIDE_WINDOW_EVENT, () => {
+          void startExit(true);
+        }),
+      ]);
+
+      if (!isMounted) {
+        showUnlisten();
+        hideUnlisten();
+        return;
+      }
+
+      unlistenShow = showUnlisten;
+      unlistenHide = hideUnlisten;
+    };
+
+    startEnter(false);
+    document.addEventListener("keydown", handleKeyDown, true);
+    void registerListeners();
+
+    return () => {
+      isMounted = false;
+      clearTransitionTimers();
+      document.removeEventListener("keydown", handleKeyDown, true);
+      unlistenShow?.();
+      unlistenHide?.();
+    };
+  }, []);
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell app-shell--${windowState}`}>
       <section className="chat-bar" data-tauri-drag-region>
         <div
           className="drag-strip"
